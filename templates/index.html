@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Penjadwalan Kuliah</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.24.0/cytoscape.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f7fa;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #003366;
+        }
+        form {
+            background-color: #ffffff;
+            padding: 20px;
+            max-width: 800px;
+            margin: 20px auto;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+        form input {
+            width: calc(50% - 10px);
+            padding: 10px;
+            margin: 5px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+        form button {
+            margin: 10px 5px;
+            padding: 10px 20px;
+            background-color: #0077cc;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        form button:hover {
+            background-color: #005fa3;
+        }
+        .controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+        #jadwal {
+            background-color: #ffffff;
+            padding: 20px;
+            max-width: 800px;
+            margin: 20px auto;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        table, th, td {
+            border: 1px solid #ccc;
+        }
+        th, td {
+            padding: 10px;
+            text-align: center;
+        }
+        th {
+            background-color: #e0f0ff;
+        }
+        #cy {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Penjadwalan Mata Kuliah Otomatis</h1>
+
+    <form onsubmit="addData(event)">
+        <input type="text" id="mahasiswa" placeholder="Nama Mahasiswa" required>
+        <input type="text" id="matakuliah" placeholder="Nama Mata Kuliah" required>
+        <input type="text" id="dosen" placeholder="Dosen">
+        <input type="text" id="ruangan" placeholder="Ruangan">
+        <input type="text" id="slot" placeholder="Contoh: Senin 08.00" required>
+        <button type="submit">Tambahkan Data</button>
+    </form>
+
+    <div class="controls">
+        <button onclick="getSchedule()">🎓 Hitung Jadwal</button>
+    </div>
+
+    <div id="jadwal"></div>
+    <div id="cy"></div>
+
+    <script>
+        async function addData(e) {
+            e.preventDefault();
+            const slotInput = document.getElementById("slot").value.trim();
+            const courseName = document.getElementById("matakuliah").value.trim();
+
+            const current = await fetch("/api/schedule");
+            const existing = await current.json();
+            for (let [name, time] of Object.entries(existing)) {
+                if (time === slotInput && name === courseName) {
+                    alert("⚠️ Mata kuliah tersebut sudah dijadwalkan di slot waktu yang sama!");
+                    return;
+                }
+            }
+
+            const data = {
+                mahasiswa: document.getElementById("mahasiswa").value,
+                matakuliah: courseName,
+                dosen: document.getElementById("dosen").value,
+                ruangan: document.getElementById("ruangan").value,
+                slot: slotInput
+            };
+
+            async function getAllSchedule() {
+                const res = await fetch("/api/jadwal_semua");
+                const allData = await res.json();
+                const el = document.getElementById("jadwal");
+
+                let html = "<h2>Jadwal Mata Kuliah:</h2><table><thead><tr><th>Mata Kuliah</th><th>Slot Waktu</th></tr></thead><tbody>";
+                for (let item of allData) {
+                    html += `<tr><td>${item.matakuliah}</td><td>${item.slot}</td></tr>`;
+                }
+                html += "</tbody></table>";
+                el.innerHTML = html;
+            }
+
+
+            await fetch("/api/add", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data)
+            });
+            alert("Data berhasil ditambahkan!");
+            loadGraph();
+getSchedule();
+getSchedule();
+        }
+
+        async function getSchedule() {
+            const res = await fetch("/api/schedule");
+            const jadwal = await res.json();
+            const el = document.getElementById("jadwal");
+
+            let html = "<h2>Jadwal Otomatis:</h2><table><thead><tr><th>Mata Kuliah</th><th>Slot Waktu</th></tr></thead><tbody>";
+            for (let course in jadwal) {
+                html += `<tr><td>${course}</td><td>${jadwal[course]}</td></tr>`;
+            }
+            html += "</tbody></table>";
+            el.innerHTML = html;
+        }
+
+        async function loadGraph() {
+            const res = await fetch("/api/graph");
+            const { nodes, edges } = await res.json();
+            cytoscape({
+                container: document.getElementById('cy'),
+                elements: [...nodes, ...edges],
+                style: [
+                    {
+                        selector: 'node',
+                        style: {
+                            'label': 'data(label)',
+                            'background-color': '#4caf50',
+                            'color': '#fff',
+                            'text-valign': 'center',
+                            'text-halign': 'center',
+                            'font-size': '10px'
+                        }
+                    },
+                    {
+                        selector: 'edge',
+                        style: {
+                            'label': 'data(label)',
+                            'width': 2,
+                            'line-color': '#888',
+                            'target-arrow-shape': 'triangle',
+                            'curve-style': 'bezier',
+                            'font-size': '8px',
+                            'text-rotation': 'autorotate'
+                        }
+                    }
+                ],
+                layout: { name: 'cose' }
+            });
+        }
+
+        loadGraph();
+    </script>
+</body>
+</html>

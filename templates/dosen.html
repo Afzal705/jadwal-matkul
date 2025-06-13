@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Halaman Dosen - Jadwal Kuliah</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f2f5;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #2c3e50;
+    }
+    p {
+      text-align: right;
+      margin: 0;
+    }
+    table {
+      width: 90%;
+      margin: 20px auto;
+      border-collapse: collapse;
+      background-color: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 12px;
+      text-align: center;
+    }
+    th {
+      background-color: #2d98da;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <p>Login sebagai: {{ session['username'] }} (<a href="/logout">Logout</a>)</p>
+  <h1>Jadwal Mengajar Anda</h1>
+
+  <table id="jadwal">
+    <thead>
+      <tr>
+        <th>Mata Kuliah</th>
+        <th>Slot Waktu</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    async function loadJadwal() {
+      const res = await fetch("/api/jadwal_dosen");
+      const data = await res.json();
+      const tbody = document.querySelector("#jadwal tbody");
+      tbody.innerHTML = "";
+      for (let item of data) {
+        tbody.innerHTML += `
+          <tr>
+            <td>${item.matakuliah}</td>
+            <td>${item.slot}</td>
+          </tr>
+        `;
+      }
+    }
+    loadJadwal();
+  </script>
+</body>
+</html>

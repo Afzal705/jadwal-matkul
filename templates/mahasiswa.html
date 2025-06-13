@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Halaman Mahasiswa - Jadwal Kuliah</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f8f9fa;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #2c3e50;
+    }
+    table {
+      width: 80%;
+      margin: 20px auto;
+      border-collapse: collapse;
+      background-color: #fff;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 12px;
+      text-align: center;
+    }
+    th {
+      background-color: #3498db;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <h1>Jadwal Kuliah Mahasiswa</h1>
+  <table id="jadwal">
+    <thead>
+      <tr>
+        <th>Mata Kuliah</th>
+        <th>Dosen Pengampu</th>
+        <th>Slot Waktu</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    async function loadJadwal() {
+      const res = await fetch("/api/jadwal_mahasiswa");
+      const data = await res.json();
+      const tbody = document.querySelector("#jadwal tbody");
+      tbody.innerHTML = "";
+      for (let item of data) {
+        tbody.innerHTML += `
+          <tr>
+            <td>${item.matakuliah}</td>
+            <td>${item.dosen}</td>
+            <td>${item.slot}</td>
+          </tr>
+        `;
+      }
+    }
+
+    loadJadwal();
+  </script>
+</body>
+</html>

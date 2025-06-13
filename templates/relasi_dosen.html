@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Relasi Dosen ke Matakuliah</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f0f2f5;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #2c3e50;
+    }
+    form {
+      max-width: 600px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    select, button {
+      width: 100%;
+      padding: 12px;
+      margin-top: 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+    table {
+      margin: 30px auto;
+      width: 80%;
+      border-collapse: collapse;
+      background: white;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 10px;
+      text-align: center;
+    }
+    th {
+      background: #3498db;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <h1>Hubungkan Dosen ke Matakuliah</h1>
+  <form onsubmit="kirimRelasi(event)">
+    <label for="dosen">Pilih Dosen:</label>
+    <select id="dosen"></select>
+
+    <label for="matakuliah">Pilih Matakuliah:</label>
+    <select id="matakuliah"></select>
+
+    <button type="submit">Buat Relasi</button>
+  </form>
+
+  <div id="hasil"></div>
+
+  <script>
+    async function muatDropdown() {
+      const res = await fetch("/api/daftar_node");
+      const data = await res.json();
+      const dosenSel = document.getElementById("dosen");
+      const matkulSel = document.getElementById("matakuliah");
+
+      data.dosen.forEach(d => dosenSel.innerHTML += `<option value="${d}">${d}</option>`);
+      data.matakuliah.forEach(m => matkulSel.innerHTML += `<option value="${m}">${m}</option>`);
+    }
+
+    async function kirimRelasi(e) {
+      e.preventDefault();
+      const dosen = document.getElementById("dosen").value;
+      const matkul = document.getElementById("matakuliah").value;
+
+      const res = await fetch("/api/relasi_dosen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dosen, matakuliah: matkul })
+      });
+      const result = await res.json();
+      document.getElementById("hasil").innerText = result.message;
+    }
+
+    muatDropdown();
+  </script>
+</body>
+</html>
