@@ -103,70 +103,69 @@ def halaman_admin():
     if session.get("peran") != "admin":
         return redirect("/login")
     return render_template("admin.html")
-
+#======================================= Drobdown ++
 @app.route("/api/admin/dropdowns")
-def admin_dropdowns():
+def dropdowns():
     with neo4j.driver.session() as db:
-        dosen = db.run("MATCH (d:Dosen) RETURN d.nama AS nama").value()
-        mahasiswa = db.run("MATCH (m:Mahasiswa) RETURN m.nama AS nama").value()
-        matkul = db.run("MATCH (k:Matakuliah) RETURN k.nama AS nama").value()
-        return jsonify({"dosen": dosen, "mahasiswa": mahasiswa, "matakuliah": matkul})
+        return jsonify({
+            "dosen": db.run("MATCH (d:Dosen) RETURN d.nama AS nama").value(),
+            "mahasiswa": db.run("MATCH (m:Mahasiswa) RETURN m.nama AS nama").value(),
+            "matakuliah": db.run("MATCH (m:Matakuliah) RETURN m.nama AS nama").value()
+        })
 
+    
+#======================================== relsi dosen ++
 @app.route("/api/admin/relasi_dosen", methods=["POST"])
 def relasi_dosen():
-    data = request.get_json()
-    dosen = data["dosen"]
-    matkul = data["matakuliah"]
-
+    dosen = data["dosen"]; matkul = data["matakuliah"]
     with neo4j.driver.session() as db:
-        # cari slot kosong
         slot = db.run("""
             MATCH (s:Slot)
             WHERE NOT EXISTS {
-                MATCH (p:Perkuliahan)-[:DIJADWALKAN_PADA]->(s)
+                MATCH (c:Kelas)-[:DIJADWALKAN_PADA]->(s)
             }
-            RETURN s.waktu AS waktu
-            LIMIT 1
+            RETURN s.waktu AS waktu LIMIT 1
         """).single()
+        if not slot: return jsonify({"message": "Slot penuh"}), 400
 
-        if not slot:
-            return jsonify({"message": "Tidak ada slot tersedia."}), 400
-
-        kul_id = f"kul_{dosen}_{matkul}_{slot['waktu']}".replace(" ", "_")
+        kelas_id = f"KLS_{dosen}_{matkul}".replace(" ", "_")
         db.run("""
-            CREATE (p:Perkuliahan {id: $kul_id})
+            CREATE (c:Kelas {id: $kelas_id})
             MATCH (d:Dosen {nama: $dosen}), (m:Matakuliah {nama: $matkul}), (s:Slot {waktu: $slot})
-            MERGE (d)-[:MENGAJAR]->(p)
-            MERGE (p)-[:UNTUK]->(m)
-            MERGE (p)-[:DIJADWALKAN_PADA]->(s)
-        """, dosen=dosen, matkul=matkul, slot=slot["waktu"], kul_id=kul_id)
+            MERGE (d)-[:MENGAJAR]->(c)
+            MERGE (c)-[:UNTUK]->(m)
+            MERGE (c)-[:DIJADWALKAN_PADA]->(s)
+        """, dosen=dosen, matkul=matkul, slot=slot["waktu"], kelas_id=kelas_id)
 
-        return jsonify({"message": f"Relasi berhasil. Slot: {slot['waktu']}"})
+        return jsonify({"message": f"Kelas {kelas_id} dibuat, slot: {slot['waktu']}"})
 
+#==================================== Relasi Mahasiswa ++
 @app.route("/api/admin/relasi_mahasiswa", methods=["POST"])
 def relasi_mahasiswa():
-    data = request.get_json()
-    mahasiswa = data["mahasiswa"]
-    matkul = data["matakuliah"]
-
+    mahasiswa = data["mahasiswa"]; matkul = data["matakuliah"]
     with neo4j.driver.session() as db:
-        # cari perkuliahan untuk matkul
-        hasil = db.run("""
-            MATCH (p:Perkuliahan)-[:UNTUK]->(m:Matakuliah {nama: $matkul})
-            RETURN p.id AS id
+        chosen = db.run("""
+            MATCH (c:Kelas)-[:UNTUK]->(m:Matakuliah {nama: $matkul})
+            RETURN c.id AS id
             LIMIT 1
         """, matkul=matkul).single()
+        if not chosen:
+            return jsonify({"message": "Belum ada kelas untuk matakuliah ini"}), 400
 
-        if not hasil:
-            return jsonify({"message": "Tidak ada perkuliahan untuk matakuliah tersebut."}), 400
-
-        kul_id = hasil["id"]
         db.run("""
-            MATCH (m:Mahasiswa {nama: $mahasiswa}), (p:Perkuliahan {id: $kul_id})
-            MERGE (m)-[:MENGAMBIL]->(p)
-        """, mahasiswa=mahasiswa, kul_id=kul_id)
+            MATCH (mhs:Mahasiswa {nama: $mhs}), (c:Kelas {id: $id})
+            MERGE (mhs)-[:MENGAMBIL]->(c)
+        """, mhs=mahasiswa, id=chosen["id"])
 
-        return jsonify({"message": f"Mahasiswa berhasil mengambil kuliah {matkul}."})
+        return jsonify({"message": f"Mahasiswa berhasil terdaftar di kelas {chosen['id']}"})
+
+@app.route("/api/admin/kelas/<matkul>")
+def admin_kelas(matkul):
+    with neo4j.driver.session() as db:
+        return jsonify(db.run("""
+            MATCH (c:Kelas)-[:UNTUK]->(m:Matakuliah {nama: $matkul})
+            RETURN c.id AS id
+        """, matkul=matkul).value())
 
 
 

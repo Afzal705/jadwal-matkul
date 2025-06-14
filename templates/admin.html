@@ -110,6 +110,15 @@
       alert((await res.json()).message);
     }
 
+      document.getElementById("matkul_mhs").onchange = async () => {
+          const matkul = document.getElementById("matkul_mhs").value;
+          const res = await fetch(`/api/admin/kelas/${encodeURIComponent(matkul)}`);
+          const kelas = await res.json();
+          const sel = document.getElementById("kelas");
+          sel.innerHTML = kelas.map(k => `<option value="${k}">${k}</option>`).join("");
+      };
+
+
     loadDropdowns();
   </script>
 </body>
