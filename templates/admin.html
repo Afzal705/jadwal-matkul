@@ -3,77 +3,170 @@
 <head>
   <meta charset="UTF-8">
   <title>Admin - Manajemen Relasi</title>
+  <script src="https://unpkg.com/vis-network@9.1.2/dist/vis-network.min.js"></script>
+  <link href="https://unpkg.com/vis-network@9.1.2/dist/vis-network.min.css" rel="stylesheet" />
   <style>
+    * { box-sizing: border-box; }
+
     body {
-      font-family: Arial, sans-serif;
-      background-color: #f2f2f2;
-      padding: 20px;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: url('/static/assets/admin.jpg') no-repeat center center fixed;
+      background-size: cover;
+      position: relative;
     }
+
+    body::before {
+      content: "";
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background-color: rgba(255, 255, 255, 0.85);
+      z-index: -1;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 30px;
+      background-color: #ffffffc5;
+      border-radius: 16px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+
     h2 {
       text-align: center;
+      margin-bottom: 30px;
       color: #2c3e50;
     }
+
     form {
-      background-color: #fff;
-      padding: 20px;
-      margin: 20px auto;
-      width: 80%;
-      border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.05);
+      margin-bottom: 40px;
     }
-    label, select, button {
+
+    label {
       display: block;
-      margin: 10px auto;
-      width: 60%;
-      padding: 10px;
+      margin-bottom: 8px;
+      font-weight: 600;
     }
+
+    select, button {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      border: 1px solid #bdc3c7;
+    }
+
     button {
       background-color: #3498db;
       color: white;
-      border: none;
-      border-radius: 5px;
+      font-size: 16px;
+      font-weight: bold;
       cursor: pointer;
+      transition: background-color 0.3s;
     }
+
+    button:hover {
+      background-color: #2980b9;
+    }
+
     .divider {
-      border-top: 2px solid #ccc;
-      margin: 30px auto;
-      width: 80%;
+      margin: 40px 0;
+      height: 1px;
+      background-color: #dcdcdc;
+    }
+
+    #cy {
+      width: 100%;
+      height: 500px;
+      background: #fff;
+      border: 2px solid #ccc;
+      border-radius: 10px;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        margin: 20px;
+        padding: 20px;
+      }
+
+      select, button {
+        font-size: 14px;
+      }
     }
   </style>
 </head>
 <body>
-  <h2>🔗 Buat Relasi Dosen → Matakuliah</h2>
-  <form onsubmit="buatRelasiDosen(event)">
-    <label>Dosen:</label>
-    <select id="dosen"></select>
+  <div class="container">
+    <h2>🔗 Buat Kelas dari Dosen + Matakuliah</h2>
+    <form onsubmit="buatRelasiDosen(event)">
+      <label for="dosen">Dosen</label>
+      <select id="dosen"></select>
 
-    <label>Matakuliah:</label>
-    <select id="matkul_dosen"></select>
+      <label for="matkul_dosen">Matakuliah</label>
+      <select id="matkul_dosen"></select>
 
-    <button type="submit">Buat Perkuliahan</button>
-  </form>
+      <button type="submit">Buat Kelas</button>
+    </form>
 
-  <div class="divider"></div>
+    <div class="divider"></div>
 
-  <h2>🎓 Tambahkan Mahasiswa ke Perkuliahan</h2>
-  <form onsubmit="buatRelasiMahasiswa(event)">
-    <label>Mahasiswa:</label>
-    <select id="mahasiswa"></select>
+    <h2>🎓 Tambahkan Mahasiswa ke Kelas</h2>
+    <form onsubmit="buatRelasiMahasiswa(event)">
+      <label for="mahasiswa">Mahasiswa</label>
+      <select id="mahasiswa"></select>
 
-    <label>Matakuliah:</label>
-    <select id="matkul_mhs"></select>
+      <label for="matkul_mhs">Matakuliah</label>
+      <select id="matkul_mhs"></select>
 
-    <button type="submit">Ambil Matakuliah</button>
-  </form>
+      <label for="kelas">Kelas (jika tersedia)</label>
+      <select id="kelas"></select>
+
+      <button type="submit">Ambil Matakuliah</button>
+    </form>
+
+    <div class="divider"></div>
+
+    <h2>⚙️ Alokasi Slot Otomatis</h2>
+    <label for="algoritma">Pilih Algoritma</label>
+    <select id="algoritma">
+      <option value="greedy">Greedy</option>
+      <option value="welsh_powell">Welsh-Powell</option>
+    </select>
+
+    <button onclick="jalankanAlokasi()">Alokasikan Slot Otomatis</button>
+
+    <div class="divider"></div>
+
+    <h2>📊 Visualisasi Relasi Mahasiswa dan Matakuliah</h2>
+    <div id="cy"></div>
+  </div>
 
   <script>
+    function warnaSlot(slot) {
+      const warna = {
+        "Senin 08.00": "#1abc9c",
+        "Senin 10.00": "#3498db",
+        "Selasa 08.00": "#9b59b6",
+        "Rabu 13.00": "#f39c12",
+        "Kamis 09.00": "#e74c3c",
+        "Jumat 15.00": "#2ecc71"
+      };
+      return warna[slot] || "#bdc3c7";
+    }
+
     async function loadDropdowns() {
       const res = await fetch("/api/admin/dropdowns");
       const data = await res.json();
 
       const isi = (id, list) => {
         const el = document.getElementById(id);
-        list.forEach(n => el.innerHTML += `<option value="${n}">${n}</option>`);
+        el.innerHTML = "";
+        list.forEach(n => {
+          el.innerHTML += `<option value="${n}">${n}</option>`;
+        });
       };
 
       isi("dosen", data.dosen);
@@ -82,44 +175,117 @@
       isi("matkul_mhs", data.matakuliah);
     }
 
+    document.getElementById("matkul_mhs").onchange = async () => {
+      const matkul = document.getElementById("matkul_mhs").value;
+      const res = await fetch(`/api/admin/kelas/${encodeURIComponent(matkul)}`);
+      const data = await res.json();
+      const el = document.getElementById("kelas");
+      el.innerHTML = "";
+      data.forEach(k => {
+        el.innerHTML += `<option value="${k}">${k}</option>`;
+      });
+    };
+
     async function buatRelasiDosen(e) {
       e.preventDefault();
-      const data = {
-        dosen: document.getElementById("dosen").value,
-        matakuliah: document.getElementById("matkul_dosen").value
-      };
       const res = await fetch("/api/admin/relasi_dosen", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data)
+        body: JSON.stringify({
+          dosen: document.getElementById("dosen").value,
+          matakuliah: document.getElementById("matkul_dosen").value
+        })
       });
-      alert((await res.json()).message);
+      const msg = await res.json();
+      alert(msg.message);
     }
 
     async function buatRelasiMahasiswa(e) {
       e.preventDefault();
-      const data = {
-        mahasiswa: document.getElementById("mahasiswa").value,
-        matakuliah: document.getElementById("matkul_mhs").value
-      };
       const res = await fetch("/api/admin/relasi_mahasiswa", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data)
+        body: JSON.stringify({
+          mahasiswa: document.getElementById("mahasiswa").value,
+          kelas: document.getElementById("kelas").value
+        })
       });
-      alert((await res.json()).message);
+      const msg = await res.json();
+      alert(msg.message);
     }
 
-      document.getElementById("matkul_mhs").onchange = async () => {
-          const matkul = document.getElementById("matkul_mhs").value;
-          const res = await fetch(`/api/admin/kelas/${encodeURIComponent(matkul)}`);
-          const kelas = await res.json();
-          const sel = document.getElementById("kelas");
-          sel.innerHTML = kelas.map(k => `<option value="${k}">${k}</option>`).join("");
-      };
+    async function tampilkanGraf() {
+      try {
+        const res = await fetch("/api/graph");
+        const data = await res.json();
 
+        const nodes = new vis.DataSet(data.nodes.map(n => ({
+          id: n.data.id,
+          label: n.data.label,
+          color: {
+            background: warnaSlot(n.data.slot),
+            border: "#2c3e50"
+          }
+        })));
 
-    loadDropdowns();
+        const edges = new vis.DataSet(data.edges.map(e => ({
+          from: e.data.source,
+          to: e.data.target,
+          label: e.data.label || "",
+          arrows: 'to',
+          color: {
+            color: warnaSlot(e.data.slot)
+          }
+        })));
+
+        const container = document.getElementById("cy");
+        const dataGraph = { nodes, edges };
+
+        const options = {
+          layout: { improvedLayout: true },
+          nodes: {
+            shape: "dot",
+            font: { color: "#fff" }
+          },
+          edges: {
+            font: { align: "middle" }
+          },
+          physics: {
+            stabilization: true
+          }
+        };
+
+        new vis.Network(container, dataGraph, options);
+      } catch (e) {
+        console.error("Gagal memuat graf:", e);
+      }
+    }
+
+    async function jalankanAlokasi() {
+      const algoritma = document.getElementById("algoritma").value;
+
+      const res = await fetch("/api/admin/auto_alokasi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ algoritma })
+      });
+
+      const data = await res.json();
+
+      alert(
+        data.message + "\n\n" +
+        "Slot Dibutuhkan: " + data.detail.num_colors + "\n" +
+        "Konflik: " + data.detail.conflict_percentage.toFixed(2) + "%" + "\n" +
+        "Waktu: " + data.detail.time.toFixed(4) + " detik"
+      );
+
+      tampilkanGraf(); // Perbarui tampilan graf setelah alokasi
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      loadDropdowns();
+      // tampilkanGraf(); // Awalnya juga tampilkan graf
+    });
   </script>
 </body>
 </html>

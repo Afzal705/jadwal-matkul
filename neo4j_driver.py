@@ -56,3 +56,15 @@ class Neo4jConnector:
              dosen=dosen, ruangan=ruangan, slot=slot)
 
 
+    def get_all_course_students(self):
+        query = """
+        MATCH (m:Mahasiswa)-[:MENGAMBIL]->(k:Kelas)-[:UNTUK]->(mk:Matakuliah)
+        RETURN mk.nama AS matkul, collect(DISTINCT m.nama) AS mahasiswa
+        """
+        with self.driver.session() as session:
+            result = session.run(query)
+            course_students = {}
+            for record in result:
+                course_students[record["matkul"]] = record["mahasiswa"]
+            return course_students
+

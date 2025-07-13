@@ -13,6 +13,11 @@
       text-align: center;
       color: #2c3e50;
     }
+    p {
+      text-align: right;
+      margin: 0;
+      font-size: 14px;
+    }
     table {
       width: 80%;
       margin: 20px auto;
@@ -29,9 +34,22 @@
       background-color: #3498db;
       color: white;
     }
+    a.logout {
+      color: #e74c3c;
+      text-decoration: none;
+      margin-left: 5px;
+    }
+    a.logout:hover {
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
+  <p>
+    Login sebagai: {{ session['username'] }}
+    (<a class="logout" href="/logout">Logout</a>)
+  </p>
+
   <h1>Jadwal Kuliah Mahasiswa</h1>
   <table id="jadwal">
     <thead>

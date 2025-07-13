@@ -1,11 +1,22 @@
+import hashlib
 from flask import Flask, render_template, request, jsonify
 from neo4j_driver import Neo4jConnector
 from graph_scheduler import schedule_courses
+from graph_scheduler import compare_algorithms
+from neo4j import GraphDatabase
+
+# from neo4j_driver import get_all_course_students
 
 app = Flask(__name__)
 neo4j = Neo4jConnector("bolt://localhost:7687", "neo4j", "412445678")  # ganti dengan kredensial Anda
 
-DEFAULT_SLOTS = ["Senin 08.00", "Senin 10.00", "Selasa 08.00", "Selasa 10.00"]
+DEFAULT_SLOTS = [
+    "Senin 08.00", "Senin 10.00", "Senin 13.00", "Senin 15.00",
+    "Selasa 08.00", "Selasa 10.00", "Selasa 13.00", "Selasa 15.00",
+    "Rabu 08.00", "Rabu 10.00", "Rabu 13.00", "Rabu 15.00",
+    "Kamis 08.00", "Kamis 10.00", "Kamis 13.00", "Kamis 15.00",
+    "Jumat 08.00", "Jumat 10.00", "Jumat 13.00", "Jumat 15.00"
+]
 
 # @app.route("/")
 # def index():
@@ -57,6 +68,19 @@ def logout():
     session.clear()
     return redirect("/login")
 
+@app.route("/evaluasi", methods=["GET"])
+def halaman_evaluasi():
+    return render_template("eval.html")  # tanpa hasil dulu
+
+@app.route("/evaluasi", methods=["POST"])
+def jalankan_evaluasi():
+    course_students = neo4j.get_all_course_students()
+    result = compare_algorithms(course_students, DEFAULT_SLOTS, neo4j.driver)  # ✅ TAMBAHKAN driver
+    return render_template("eval.html", result=result)
+
+
+
+
 
 @app.route("/mahasiswa")
 def halaman_mahasiswa():
@@ -65,24 +89,22 @@ def halaman_mahasiswa():
 # ================================================== dosen =====================================================
 @app.route("/api/jadwal_dosen")
 def jadwal_dosen():
-    if session.get("peran") != "dosen":
-        return jsonify([])
+    if "username" not in session or session.get("peran") != "dosen":
+        return jsonify({"error": "Unauthorized"}), 403
 
-    nama = session["username"]
-    query = """
-    MATCH (d:Dosen {nama: $nama})-[:MENGAJAR]->(k:Perkuliahan)
-    MATCH (k)-[:UNTUK]->(mat:Matakuliah)
-    MATCH (k)-[:DIJADWALKAN_PADA]->(slot:Slot)
-    RETURN mat.nama AS matkul, slot.waktu AS slot
-    ORDER BY slot.waktu
-    """
-    with neo4j.driver.session() as db:
-        result = db.run(query, nama=nama)
-        return jsonify([{
-            "matakuliah": r["matkul"],
-            "slot": r["slot"]
-        } for r in result])
-
+    dosen = session["username"]
+    try:
+        with neo4j.driver.session() as db:
+            result = db.run("""
+                MATCH (d:Dosen {nama: $nama})-[:MENGAJAR]->(k:Kelas)
+                MATCH (k)-[:UNTUK]->(matkul:Matakuliah)
+                # MATCH (k)-[:DIJADWALKAN_PADA]->(s:Slot)
+                RETURN matkul.nama AS matakuliah, s.waktu AS slot
+            """, nama=dosen)
+            jadwal = [dict(record) for record in result]
+        return jsonify(jadwal)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 
@@ -103,6 +125,36 @@ def halaman_admin():
     if session.get("peran") != "admin":
         return redirect("/login")
     return render_template("admin.html")
+
+@app.route("/api/admin/auto_alokasi", methods=["POST"])
+def auto_alokasi():
+    try:
+        data = request.get_json()
+        selected_algo = data.get("algoritma", "greedy")  # default ke greedy
+
+        course_students = neo4j.get_all_course_students()
+        result = compare_algorithms(course_students, DEFAULT_SLOTS, neo4j.driver)
+
+        if selected_algo == "greedy":
+            eval_result = result["greedy"]
+        elif selected_algo == "welsh_powell":
+            eval_result = result["welsh_powell"]
+        else:
+            return jsonify({"message": "❌ Algoritma tidak dikenali"}), 400
+
+        return jsonify({
+            "message": f"✅ Slot berhasil dialokasikan menggunakan algoritma {selected_algo.capitalize()}.",
+            "detail": {
+                "num_colors": eval_result["eval"]["num_colors"],
+                "conflict_percentage": eval_result["eval"]["conflict_percentage"],
+                "time": eval_result["time"]
+            }
+        })
+
+    except Exception as e:
+        return jsonify({"message": "❌ Gagal melakukan alokasi otomatis.", "error": str(e)}), 500
+
+
 #======================================= Drobdown ++
 @app.route("/api/admin/dropdowns")
 def dropdowns():
@@ -117,47 +169,72 @@ def dropdowns():
 #======================================== relsi dosen ++
 @app.route("/api/admin/relasi_dosen", methods=["POST"])
 def relasi_dosen():
-    dosen = data["dosen"]; matkul = data["matakuliah"]
-    with neo4j.driver.session() as db:
-        slot = db.run("""
-            MATCH (s:Slot)
-            WHERE NOT EXISTS {
-                MATCH (c:Kelas)-[:DIJADWALKAN_PADA]->(s)
-            }
-            RETURN s.waktu AS waktu LIMIT 1
-        """).single()
-        if not slot: return jsonify({"message": "Slot penuh"}), 400
+    try:
+        data = request.get_json()
+        dosen = data["dosen"]
+        matkul = data["matakuliah"]
+    except Exception as e:
+        return jsonify({"error": "Data tidak valid atau JSON salah", "detail": str(e)}), 400
 
-        kelas_id = f"KLS_{dosen}_{matkul}".replace(" ", "_")
-        db.run("""
-            CREATE (c:Kelas {id: $kelas_id})
-            MATCH (d:Dosen {nama: $dosen}), (m:Matakuliah {nama: $matkul}), (s:Slot {waktu: $slot})
-            MERGE (d)-[:MENGAJAR]->(c)
-            MERGE (c)-[:UNTUK]->(m)
-            MERGE (c)-[:DIJADWALKAN_PADA]->(s)
-        """, dosen=dosen, matkul=matkul, slot=slot["waktu"], kelas_id=kelas_id)
+    try:
+        with neo4j.driver.session() as db:
+            # Cari slot yang belum dipakai
+            slot = db.run("""
+                MATCH (s:Slot)
+                WHERE NOT EXISTS {
+                    MATCH (c:Kelas)-[:DIJADWALKAN_PADA]->(s)
+                }
+                RETURN s.waktu AS waktu LIMIT 1
+            """).single()
 
-        return jsonify({"message": f"Kelas {kelas_id} dibuat, slot: {slot['waktu']}"})
+            if not slot:
+                return jsonify({"message": "Slot penuh"}), 400
+
+            kelas_id = f"KLS_{dosen}_{matkul}".replace(" ", "_")
+
+            result = db.run("""
+                CREATE (c:Kelas {id: $kelas_id})
+                WITH c
+                MATCH (d:Dosen {nama: $dosen}), (m:Matakuliah {nama: $matkul}), (s:Slot {waktu: $slot})
+                MERGE (d)-[:MENGAJAR]->(c)
+                MERGE (c)-[:UNTUK]->(m)
+                MERGE (c)-[:DIJADWALKAN_PADA]->(s)
+            """, dosen=dosen, matkul=matkul, slot=slot["waktu"], kelas_id=kelas_id)
+
+            return jsonify({"message": f"Kelas {kelas_id} dibuat, slot: {slot['waktu']}"})
+
+    except Exception as e:
+        return jsonify({"error": "Gagal membuat relasi kelas", "detail": str(e)}), 500
+
 
 #==================================== Relasi Mahasiswa ++
 @app.route("/api/admin/relasi_mahasiswa", methods=["POST"])
 def relasi_mahasiswa():
-    mahasiswa = data["mahasiswa"]; matkul = data["matakuliah"]
-    with neo4j.driver.session() as db:
-        chosen = db.run("""
-            MATCH (c:Kelas)-[:UNTUK]->(m:Matakuliah {nama: $matkul})
-            RETURN c.id AS id
-            LIMIT 1
-        """, matkul=matkul).single()
-        if not chosen:
-            return jsonify({"message": "Belum ada kelas untuk matakuliah ini"}), 400
+    try:
+        data = request.get_json()
+        mahasiswa = data["mahasiswa"]
+        kelas_id = data["kelas"]
 
-        db.run("""
-            MATCH (mhs:Mahasiswa {nama: $mhs}), (c:Kelas {id: $id})
-            MERGE (mhs)-[:MENGAMBIL]->(c)
-        """, mhs=mahasiswa, id=chosen["id"])
+        with neo4j.driver.session() as db:
+            kelas = db.run("""
+                MATCH (c:Kelas {id: $id}) RETURN c.id AS id
+            """, id=kelas_id).single()
 
-        return jsonify({"message": f"Mahasiswa berhasil terdaftar di kelas {chosen['id']}"})
+            if not kelas:
+                return jsonify({"message": "Kelas tidak ditemukan"}), 400
+
+            db.run("""
+                MATCH (mhs:Mahasiswa {nama: $mhs}), (c:Kelas {id: $id})
+                MERGE (mhs)-[:MENGAMBIL]->(c)
+            """, mhs=mahasiswa, id=kelas_id)
+
+            return jsonify({"message": f"Mahasiswa berhasil mengambil kelas {kelas_id}"})
+
+    except KeyError as e:
+        return jsonify({"message": f"Field hilang: {e}"}), 400
+    except Exception as e:
+        return jsonify({"message": f"Terjadi error: {str(e)}"}), 500
+
 
 @app.route("/api/admin/kelas/<matkul>")
 def admin_kelas(matkul):
@@ -219,25 +296,24 @@ def buat_relasi_dosen():
 
 @app.route("/api/jadwal_mahasiswa")
 def jadwal_mahasiswa():
-    if session.get("peran") != "mahasiswa":
-        return jsonify([])
+    if "username" not in session or session.get("peran") != "mahasiswa":
+        return jsonify({"error": "Unauthorized"}), 403
 
-    nama = session["username"]
-    query = """
-    MATCH (mhs:Mahasiswa {nama: $nama})-[:MENGAMBIL]->(k:Perkuliahan)
-    MATCH (k)-[:UNTUK]->(mat:Matakuliah)
-    MATCH (k)-[:DIJADWALKAN_PADA]->(slot:Slot)
-    MATCH (d:Dosen)-[:MENGAJAR]->(k)
-    RETURN mat.nama AS matkul, d.nama AS dosen, slot.waktu AS slot
-    ORDER BY slot.waktu
-    """
-    with neo4j.driver.session() as db:
-        result = db.run(query, nama=nama)
-        return jsonify([{
-            "matakuliah": r["matkul"],
-            "dosen": r["dosen"],
-            "slot": r["slot"]
-        } for r in result])
+    mahasiswa = session["username"]
+    try:
+        with neo4j.driver.session() as db:
+            result = db.run("""
+                MATCH (mhs:Mahasiswa {nama: $nama})-[:MENGAMBIL]->(k:Kelas)
+                MATCH (k)-[:UNTUK]->(matkul:Matakuliah)
+                MATCH (k)-[:DIJADWALKAN_PADA]->(s:Slot)
+                OPTIONAL MATCH (d:Dosen)-[:MENGAJAR]->(k)
+                RETURN matkul.nama AS matakuliah, d.nama AS dosen, s.waktu AS slot
+            """, nama=mahasiswa)
+            jadwal = [dict(record) for record in result]
+        return jsonify(jadwal)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 
 @app.route("/api/schedule")
@@ -278,4 +354,69 @@ def semua_jadwal():
 
 if __name__ == "__main__":
     app.run(debug=True, port=5001)
+
+#========================================== graf ============================================
+SLOT_COLOR_MAP = {
+    "Senin 08.00": "#e74c3c",
+    "Senin 10.00": "#3498db",
+    "Selasa 08.00": "#2ecc71",
+    "Selasa 10.00": "#9b59b6",
+    "Rabu 08.00": "#f1c40f",
+    "Rabu 10.00": "#e67e22",
+    "Kamis 08.00": "#1abc9c",
+    "Kamis 10.00": "#34495e",
+    "Jumat 08.00": "#7f8c8d",
+    "Jumat 10.00": "#ff6f61",
+}
+DEFAULT_SLOTS = list(SLOT_COLOR_MAP.keys())
+
+
+
+def hash_color(text):
+    h = hashlib.md5(text.encode()).hexdigest()
+    return f"#{h[:6]}"
+
+# @app.route("/api/graph")
+# def get_graph():
+#     # Ambil data dari Neo4j
+#     course_data = neo4j.get_course_student_map()
+
+#     # Gunakan algoritma scheduler (DSATUR)
+#     slot_mapping = schedule_courses(course_data, DEFAULT_SLOTS)
+
+#     nodes = []
+#     edges = []
+#     added_nodes = set()
+
+#     for course, mahasiswa_list in course_data.items():
+#         # Ambil slot dan warna matakuliah
+#         slot = slot_mapping.get(course, "Senin 08.00")
+#         color = SLOT_COLOR_MAP.get(slot, "#95a5a6")
+
+#         # Tambah node untuk matakuliah
+#         if course not in added_nodes:
+#             nodes.append({
+#                 "id": course,
+#                 "label": course,
+#                 "color": color
+#             })
+#             added_nodes.add(course)
+
+#         # Tambah node dan edge untuk mahasiswa
+#         for mhs in mahasiswa_list:
+#             if mhs not in added_nodes:
+#                 nodes.append({
+#                     "id": mhs,
+#                     "label": mhs,
+#                     "color": "#cccccc"  # Mahasiswa pakai warna abu
+#                 })
+#                 added_nodes.add(mhs)
+
+#             edges.append({
+#                 "from": mhs,
+#                 "to": course
+#             })
+
+#     return jsonify({"nodes": nodes, "edges": edges})
+
 

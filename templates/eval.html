@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Evaluasi Algoritma Coloring</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 30px;
+    }
+    .summary-box {
+      background: #eef1f5;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+    }
+    table, th, td {
+      border: 1px solid #ccc;
+    }
+    th, td {
+      padding: 8px 12px;
+      text-align: center;
+    }
+    th {
+      background: #f5f5f5;
+    }
+    h2 {
+      margin-top: 40px;
+    }
+    .table-container {
+      display: flex;
+      justify-content: space-between;
+      gap: 40px;
+      flex-wrap: wrap;
+    }
+    .table-box {
+      width: 45%;
+    }
+    .center-button {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 30px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #2980b9;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="center-button">
+    <form method="POST" action="/evaluasi">
+      <button type="submit">Jalankan Evaluasi</button>
+    </form>
+  </div>
+
+  {% if result %}
+    <div class="summary-box">
+      <h2>Statistik Perbandingan Coloring</h2>
+      <table>
+        <tr>
+          <th>Metode</th>
+          <th>Slot Dibutuhkan</th>
+          <th>Konflik (%)</th>
+          <th>Waktu (ms)</th>
+        </tr>
+        <tr>
+          <td>Greedy</td>
+          <td>{{ result.greedy.eval.num_colors }}</td>
+          <td>{{ "%.2f" % result.greedy.eval.conflict_percentage }}</td>
+          <td>{{ "%.2f" % (result.greedy.time * 1000) }}</td>
+        </tr>
+        <tr>
+          <td>Welsh-Powell</td>
+          <td>{{ result.welsh_powell.eval.num_colors }}</td>
+          <td>{{ "%.2f" % result.welsh_powell.eval.conflict_percentage }}</td>
+          <td>{{ "%.2f" % (result.welsh_powell.time * 1000) }}</td>
+        </tr>
+      </table>
+    </div>
+
+    {% set slot_names = [
+      "Senin 08.00", "Senin 10.00", "Senin 13.00", "Senin 15.00",
+      "Selasa 08.00", "Selasa 10.00", "Selasa 13.00", "Selasa 15.00",
+      "Rabu 08.00", "Rabu 10.00", "Rabu 13.00", "Rabu 15.00",
+      "Kamis 08.00", "Kamis 10.00", "Kamis 13.00", "Kamis 15.00",
+      "Jumat 08.00", "Jumat 10.00", "Jumat 13.00", "Jumat 15.00"
+    ] %}
+
+    <div class="table-container">
+      <div class="table-box">
+        <h2>Distribusi Slot (Welsh-Powell)</h2>
+        <table>
+          <tr>
+            <th>Slot</th>
+            <th>Jumlah Mata Kuliah</th>
+            <th>Mata Kuliah</th>
+          </tr>
+          {% for i in range(20) %}
+          <tr>
+            <td>{{ slot_names[i] }}</td>
+            <td>{{ result.welsh_powell.eval.color_distribution.get(i, 0) }}</td>
+            <td>
+              {% set mk = result.welsh_powell.coloring.items() | selectattr('1', 'equalto', i) | map(attribute='0') | list %}
+              {{ mk | join(', ') if mk else '-' }}
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+
+      <div class="table-box">
+        <h2>Distribusi Slot (Greedy)</h2>
+        <table>
+          <tr>
+            <th>Slot</th>
+            <th>Jumlah Mata Kuliah</th>
+            <th>Mata Kuliah</th>
+          </tr>
+          {% for i in range(20) %}
+          <tr>
+            <td>{{ slot_names[i] }}</td>
+            <td>{{ result.greedy.eval.color_distribution.get(i, 0) }}</td>
+            <td>
+              {% set mk = result.greedy.coloring.items() | selectattr('1', 'equalto', i) | map(attribute='0') | list %}
+              {{ mk | join(', ') if mk else '-' }}
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+    </div>
+  {% endif %}
+
+</body>
+</html>
